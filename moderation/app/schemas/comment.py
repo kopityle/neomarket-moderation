@@ -5,10 +5,10 @@ from uuid import UUID
 
 
 class ModerationCommentBase(BaseModel):
-    task_id: int
-    user_id: UUID = Field(..., description="Кто написал (модератор или продавец)")
+    task_id: UUID  # int → UUID
+    user_id: UUID
     message: str = Field(..., min_length=1, max_length=2000)
-    is_from_moderator: bool = Field(..., description="true=от модератора, false=от продавца")
+    is_from_moderator: bool
 
 
 class ModerationCommentCreate(ModerationCommentBase):
@@ -16,7 +16,7 @@ class ModerationCommentCreate(ModerationCommentBase):
 
 
 class ModerationComment(ModerationCommentBase):
-    id: int
+    id: UUID  # int → UUID
     created_at: datetime
 
     class Config:

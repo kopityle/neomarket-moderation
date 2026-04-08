@@ -118,63 +118,72 @@ moderation/
 ## Модели данных
 
 ### ModerationTask (задача на модерацию)
-`id`: SERIAL — первичный ключ
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUID | первичный ключ |
+| `product_id` | UUID | ID товара из B2B |
+| `seller_id` | UUID | ID продавца из B2B |
+| `priority` | INT | 0=обычный, 1=высокий |
+| `status` | VARCHAR | PENDING/IN_PROGRESS/APPROVED/DECLINED |
+| `assigned_to` | UUID | ID модератора из Auth (опционально) |
+| `completed_at` | TIMESTAMP | дата завершения |
+| `created_at` | TIMESTAMP | дата создания |
+| `updated_at` | TIMESTAMP | дата обновления |
 
-`product_id`: INT — ID товара из B2B
-
-`seller_id`: UUID — ID продавца из B2B
-
-`priority`: INT — 0=обычный, 1=высокий
-
-`status`: VARCHAR — PENDING/IN_PROGRESS/APPROVED/DECLINED
-
-`assigned_to`: UUID — ID модератора из Auth
-
-### BlockingReason (причина блокировки)
-`id`: SERIAL — первичный ключ
-
-`code`: VARCHAR — уникальный код (например, 'wrong_photos')
-
-`name`: VARCHAR — название причины
-
-`description`: TEXT — описание
-
-`is_active`: BOOLEAN — активна ли причина
+### BlockingReason (причина блокировки) — справочник
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | SERIAL | первичный ключ (INTEGER) |
+| `code` | VARCHAR | уникальный код (например, 'wrong_photos') |
+| `name` | VARCHAR | название причины |
+| `description` | TEXT | описание |
+| `is_active` | BOOLEAN | активна ли причина |
+| `created_at` | TIMESTAMP | дата создания |
+| `updated_at` | TIMESTAMP | дата обновления |
 
 ### ProductSnapshot (снимок товара)
-`id`: SERIAL — первичный ключ
-
-`task_id`: INT — ссылка на задачу
-
-`product_data`: JSON — полная копия товара + SKU
-
-`version`: INT — версия снимка
-
-`is_initial`: BOOLEAN — первая версия или после изменений
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUID | первичный ключ |
+| `task_id` | UUID | ссылка на задачу (внешний ключ) |
+| `product_data` | JSON | полная копия товара + SKU из B2B |
+| `version` | INT | версия снимка |
+| `is_initial` | BOOLEAN | первая версия или после изменений |
+| `created_at` | TIMESTAMP | дата создания |
+| `updated_at` | TIMESTAMP | дата обновления |
 
 ### ModerationDecision (решение модератора)
-`id`: SERIAL — первичный ключ
-
-`task_id`: INT — ссылка на задачу
-
-`moderator_id`: UUID — ID модератора
-
-`decision`: VARCHAR — APPROVED/DECLINED
-
-`blocking_reason_id`: INT — ссылка на причину (если DECLINED)
-
-`comment`: TEXT — комментарий
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUID | первичный ключ |
+| `task_id` | UUID | ссылка на задачу (внешний ключ) |
+| `moderator_id` | UUID | ID модератора из Auth |
+| `decision` | VARCHAR | APPROVED/DECLINED |
+| `blocking_reason_id` | INT | ссылка на причину (если DECLINED) |
+| `comment` | TEXT | комментарий |
+| `created_at` | TIMESTAMP | дата создания |
+| `updated_at` | TIMESTAMP | дата обновления |
 
 ### ModerationComment (комментарий)
-`id`: SERIAL — первичный ключ
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUID | первичный ключ |
+| `task_id` | UUID | ссылка на задачу (внешний ключ) |
+| `user_id` | UUID | автор (модератор или продавец) |
+| `message` | TEXT | текст комментария |
+| `is_from_moderator` | BOOLEAN | true = от модератора, false = от продавца |
+| `created_at` | TIMESTAMP | дата создания |
+| `updated_at` | TIMESTAMP | дата обновления |
 
-`task_id`: INT — ссылка на задачу
+## Сводка по типам ID
 
-`user_id`: UUID — автор (модератор или продавец)
-
-`message`: TEXT — текст комментария
-
-`is_from_moderator`: BOOLEAN — от модератора или продавца
+| Таблица | ID поле | Внешние ключи |
+|---------|---------|---------------|
+| `moderation_tasks` | UUID | `product_id` (UUID), `seller_id` (UUID) |
+| `product_snapshots` | UUID | `task_id` (UUID) |
+| `moderation_decisions` | UUID | `task_id` (UUID) |
+| `moderation_comments` | UUID | `task_id` (UUID) |
+| `blocking_reasons` | INTEGER | — (справочник) |
 
 
 

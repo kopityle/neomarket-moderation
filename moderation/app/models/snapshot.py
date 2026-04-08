@@ -1,13 +1,14 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, Boolean
+from sqlalchemy import Column, String, DateTime, ForeignKey, JSON, Boolean, Integer
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
+import uuid
 
 
 class ProductSnapshot(BaseModel):
     __tablename__ = "product_snapshots"
     
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    task_id = Column(Integer, ForeignKey("moderation_tasks.id", ondelete="CASCADE"), nullable=False)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    task_id = Column(String(36), ForeignKey("moderation_tasks.id", ondelete="CASCADE"), nullable=False)
     
     product_data = Column(JSON, nullable=False)  # полная копия товара + SKU
     version = Column(Integer, default=1)

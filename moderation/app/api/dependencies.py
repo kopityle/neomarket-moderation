@@ -5,10 +5,7 @@ from uuid import UUID
 async def get_current_moderator_id(
     x_moderator_id: str = Header(..., alias="X-Moderator-Id")
 ) -> UUID:
-    """
-    Получить ID текущего модератора из заголовка.
-    В реальном проекте здесь будет проверка JWT токена.
-    """
+    """Получить ID текущего модератора из заголовка"""
     try:
         return UUID(x_moderator_id)
     except ValueError:

@@ -13,7 +13,7 @@ class TestModerationTasks:
         )
         assert response.status_code == 404
     
-    def test_get_next_task_success(self, client, test_moderation_task, test_moderator_id):
+    def test_get_next_task_success(self, client, test_moderation_task, test_moderator_id, test_product_id):
         """Успешное получение следующей задачи"""
         response = client.post(
             "/api/v1/product-moderation/get-next",
@@ -21,24 +21,23 @@ class TestModerationTasks:
         )
         assert response.status_code == 200
         
-        # Задача должна обновиться
         data = response.json()
-        assert data["id"] == test_moderation_task.product_id
+        # Сравниваем как строки (UUID)
+        assert str(data["id"]) == str(test_product_id)
     
     def test_approve_product_not_found(self, client, test_moderator_id):
         """Одобрение несуществующего товара"""
+        fake_id = "99999999-9999-9999-9999-999999999999"
         response = client.post(
-            "/api/v1/product-moderation/products/99999/approve",
+            f"/api/v1/product-moderation/products/{fake_id}/approve",
             headers={"X-Moderator-Id": test_moderator_id}
         )
         assert response.status_code == 404
     
-    def test_approve_product_success(self, client, test_moderation_task_in_progress, test_moderator_id):
+    def test_approve_product_success(self, client, test_moderation_task_in_progress, test_moderator_id, test_product_id):
         """Успешное одобрение товара"""
-        task = test_moderation_task_in_progress
-        
         response = client.post(
-            f"/api/v1/product-moderation/products/{task.product_id}/approve",
+            f"/api/v1/product-moderation/products/{test_product_id}/approve",
             headers={"X-Moderator-Id": test_moderator_id}
         )
         assert response.status_code == 200
@@ -47,13 +46,12 @@ class TestModerationTasks:
         assert data["success"] is True
         assert data["decision"] == "APPROVED"
     
-    def test_decline_product_success(self, client, test_moderation_task_in_progress, test_moderator_id, test_blocking_reasons):
+    def test_decline_product_success(self, client, test_moderation_task_in_progress, test_moderator_id, test_blocking_reasons, test_product_id):
         """Успешная блокировка товара"""
-        task = test_moderation_task_in_progress
         reason = test_blocking_reasons[0]
         
         response = client.post(
-            f"/api/v1/product-moderation/products/{task.product_id}/decline",
+            f"/api/v1/product-moderation/products/{test_product_id}/decline",
             params={"reason_id": reason.id, "comment": "Неверные фотографии"},
             headers={"X-Moderator-Id": test_moderator_id}
         )
@@ -63,20 +61,17 @@ class TestModerationTasks:
         assert data["success"] is True
         assert data["decision"] == "DECLINED"
     
-    def test_decline_product_missing_reason(self, client, test_moderation_task_in_progress, test_moderator_id):
-        """Блокировка без указания причины (должна быть ошибка)"""
-        task = test_moderation_task_in_progress
-        
+    def test_decline_product_missing_reason(self, client, test_moderation_task_in_progress, test_moderator_id, test_product_id):
+        """Блокировка без указания причины"""
         response = client.post(
-            f"/api/v1/product-moderation/products/{task.product_id}/decline",
+            f"/api/v1/product-moderation/products/{test_product_id}/decline",
             params={"comment": "Комментарий без причины"},
             headers={"X-Moderator-Id": test_moderator_id}
         )
-        # Должна быть ошибка 422 или 400
         assert response.status_code in [400, 422]
     
     def test_moderation_without_auth(self, client):
-        """Запрос без авторизации (должен быть 422 или 400)"""
+        """Запрос без авторизации"""
         response = client.post("/api/v1/product-moderation/get-next")
         assert response.status_code in [400, 422]
     

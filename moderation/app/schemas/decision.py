@@ -11,10 +11,10 @@ class DecisionType(str, Enum):
 
 
 class ModerationDecisionBase(BaseModel):
-    task_id: int
-    moderator_id: UUID = Field(..., description="ID модератора из Auth")
+    task_id: UUID  # int → UUID
+    moderator_id: UUID
     decision: DecisionType
-    blocking_reason_id: Optional[int] = Field(None, description="ID причины блокировки")
+    blocking_reason_id: Optional[int] = None
     comment: Optional[str] = Field(None, max_length=1000)
 
 
@@ -23,7 +23,7 @@ class ModerationDecisionCreate(ModerationDecisionBase):
 
 
 class ModerationDecision(ModerationDecisionBase):
-    id: int
+    id: UUID  # int → UUID
     created_at: datetime
 
     class Config:

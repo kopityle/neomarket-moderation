@@ -27,7 +27,6 @@ class ModerationService:
     def get_next_task(self, moderator_id: UUID, priority: Optional[int] = None) -> Optional[Dict[str, Any]]:
         """Получить следующую задачу на модерацию (синхронно, без B2B для тестов)"""
         
-        # Ищем задачу в статусе PENDING
         query = self.db.query(ModerationTask).filter(
             ModerationTask.status == TaskStatus.PENDING
         )
@@ -48,10 +47,9 @@ class ModerationService:
         task.assigned_to = str(moderator_id)
         self.db.commit()
         
-        # Для тестов возвращаем заглушку товара
-        # В реальном коде здесь должен быть асинхронный вызов B2B
+        # Возвращаем товар в формате, совместимом с B2BProduct
         product = {
-            "id": task.product_id,
+            "id": task.product_id,  # ← UUID строка
             "title": f"Test Product {task.product_id}",
             "description": "Test description",
             "status": "PENDING_MODERATION",
@@ -88,10 +86,10 @@ class ModerationService:
         """Одобрить товар"""
         
         task = self.db.query(ModerationTask).filter(
-            and_(
-                ModerationTask.product_id == product_id,
-                ModerationTask.status == TaskStatus.IN_PROGRESS
-            )
+        and_(
+            ModerationTask.product_id == product_id,
+            ModerationTask.status == TaskStatus.IN_PROGRESS
+        )
         ).first()
         
         if not task:
@@ -118,13 +116,12 @@ class ModerationService:
     
     def decline_product(
         self, 
-        product_id: int, 
+        product_id: str, 
         moderator_id: UUID, 
         reason_id: int, 
         comment: Optional[str] = None
     ) -> bool:
         """Заблокировать товар"""
-        
         task = self.db.query(ModerationTask).filter(
             and_(
                 ModerationTask.product_id == product_id,

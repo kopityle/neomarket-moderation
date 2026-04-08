@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 class B2BCategory(BaseModel):
-    id: int
+    id: int  # в B2B категории могут быть INTEGER
     name: str
 
 
@@ -20,7 +20,7 @@ class B2BCharacteristic(BaseModel):
 
 
 class B2BSKU(BaseModel):
-    id: int
+    id: int  # SKU id в B2B может быть INTEGER
     name: str
     price: int
     activeQuantity: int
@@ -29,10 +29,11 @@ class B2BSKU(BaseModel):
 
 class B2BProduct(BaseModel):
     """Товар из B2B сервиса"""
-    id: int
+    id: UUID  # ← int → UUID
     title: str
     description: Optional[str] = None
     status: str
+    seller_id: UUID  # ← добавить seller_id
     category: B2BCategory
     images: List[B2BImage] = []
     characteristics: List[B2BCharacteristic] = []

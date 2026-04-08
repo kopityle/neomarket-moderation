@@ -3,6 +3,7 @@ import os
 sys.path.insert(0, '/app')
 
 import pytest
+import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -32,7 +33,6 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_database():
-    """Создание таблиц один раз для всех тестов"""
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
@@ -40,7 +40,6 @@ def setup_database():
 
 @pytest.fixture
 def db_session(setup_database):
-    """Фикстура для сессии БД"""
     db = TestingSessionLocal()
     try:
         yield db
@@ -51,7 +50,6 @@ def db_session(setup_database):
 
 @pytest.fixture
 def client(db_session):
-    """Фикстура для тестового клиента"""
     def override_get_db():
         try:
             yield db_session
@@ -76,10 +74,13 @@ def test_seller_id():
 
 
 @pytest.fixture
+def test_product_id():
+    """Фикстура: ID товара (UUID)"""
+    return "770e8400-e29b-41d4-a716-446655440002"
+
+
+@pytest.fixture
 def test_blocking_reasons(db_session):
-    """Фикстура: причины блокировки (только если их ещё нет)"""
-    from app.models.reason import BlockingReason
-    
     reasons_data = [
         ("wrong_photos", "Неверные фотографии", "Фотографии не соответствуют товару"),
         ("incorrect_category", "Неверная категория", "Товар размещён в неподходящей категории"),
@@ -88,7 +89,6 @@ def test_blocking_reasons(db_session):
     
     reasons = []
     for code, name, desc in reasons_data:
-        # Проверяем, существует ли уже такая причина
         existing = db_session.query(BlockingReason).filter(BlockingReason.code == code).first()
         if existing:
             reasons.append(existing)
@@ -104,7 +104,6 @@ def test_blocking_reasons(db_session):
     
     db_session.commit()
     
-    # Обновляем объекты
     for reason in reasons:
         db_session.refresh(reason)
     
@@ -112,10 +111,11 @@ def test_blocking_reasons(db_session):
 
 
 @pytest.fixture
-def test_moderation_task(db_session, test_seller_id):
-    """Фикстура: задача на модерацию"""
+def test_moderation_task(db_session, test_seller_id, test_product_id):
+    """Фикстура: задача на модерацию (PENDING)"""
     task = ModerationTask(
-        product_id=1,
+        id=str(uuid.uuid4()),
+        product_id=test_product_id,
         seller_id=test_seller_id,
         priority=0,
         status="PENDING"
@@ -127,10 +127,11 @@ def test_moderation_task(db_session, test_seller_id):
 
 
 @pytest.fixture
-def test_moderation_task_in_progress(db_session, test_seller_id, test_moderator_id):
+def test_moderation_task_in_progress(db_session, test_seller_id, test_moderator_id, test_product_id):
     """Фикстура: задача в процессе модерации"""
     task = ModerationTask(
-        product_id=2,
+        id=str(uuid.uuid4()),
+        product_id=test_product_id,
         seller_id=test_seller_id,
         priority=0,
         status="IN_PROGRESS",

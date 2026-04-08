@@ -14,7 +14,7 @@ class TaskStatus(str, Enum):
 
 
 class ModerationTaskBase(BaseModel):
-    product_id: int = Field(..., gt=0, description="ID товара из B2B")
+    product_id: UUID = Field(..., description="ID товара из B2B")  # ← int → UUID
     seller_id: UUID = Field(..., description="ID продавца из B2B")
     priority: int = Field(default=0, ge=0, le=1, description="0=обычный, 1=высокий")
     assigned_to: Optional[UUID] = Field(None, description="ID модератора из Auth")
@@ -31,7 +31,7 @@ class ModerationTaskUpdate(BaseModel):
 
 
 class ModerationTask(ModerationTaskBase):
-    id: int
+    id: UUID  # ← int → UUID
     status: TaskStatus = TaskStatus.PENDING
     completed_at: Optional[datetime] = None
     created_at: datetime

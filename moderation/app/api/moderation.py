@@ -16,14 +16,11 @@ router = APIRouter()
 
 @router.post("/get-next", response_model=Optional[B2BProduct])
 def get_next_product_for_moderation(
-    priority: Optional[int] = Query(default=None, ge=0, le=1, description="Приоритет: 0=обычный, 1=высокий"),
+    priority: Optional[int] = Query(default=None, ge=0, le=1),
     moderator_id: UUID = Depends(get_current_moderator_id),
     db: Session = Depends(get_db)
 ):
-    """
-    Получить следующий товар на модерацию.
-    Возвращает товар из B2B и создаёт снапшот.
-    """
+    """Получить следующий товар на модерацию"""
     service = ModerationService(db)
     result = service.get_next_task(moderator_id, priority)
     
@@ -38,16 +35,13 @@ def get_next_product_for_moderation(
 
 @router.post("/products/{product_id}/approve", response_model=dict)
 def approve_product(
-    product_id: int,
+    product_id: UUID,  # ← int → UUID
     moderator_id: UUID = Depends(get_current_moderator_id),
     db: Session = Depends(get_db)
 ):
-    """
-    Одобрить товар.
-    Отправляет результат в B2B и обновляет статус задачи.
-    """
+    """Одобрить товар"""
     service = ModerationService(db)
-    result = service.approve_product(product_id, moderator_id)
+    result = service.approve_product(str(product_id), moderator_id)  # ← передаём как строку
     
     if not result:
         raise HTTPException(
@@ -55,23 +49,20 @@ def approve_product(
             detail=f"Товар с ID {product_id} не найден в очереди модерации"
         )
     
-    return {"success": True, "product_id": product_id, "decision": "APPROVED"}
+    return {"success": True, "product_id": str(product_id), "decision": "APPROVED"}
 
 
 @router.post("/products/{product_id}/decline", response_model=dict)
 def decline_product(
-    product_id: int,
+    product_id: UUID,  # ← int → UUID
     reason_id: int = Query(..., description="ID причины блокировки"),
     comment: Optional[str] = Query(None, max_length=1000),
     moderator_id: UUID = Depends(get_current_moderator_id),
     db: Session = Depends(get_db)
 ):
-    """
-    Заблокировать товар с указанием причины.
-    Отправляет результат в B2B и обновляет статус задачи.
-    """
+    """Заблокировать товар с указанием причины"""
     service = ModerationService(db)
-    result = service.decline_product(product_id, moderator_id, reason_id, comment)
+    result = service.decline_product(str(product_id), moderator_id, reason_id, comment)
     
     if not result:
         raise HTTPException(
@@ -79,7 +70,7 @@ def decline_product(
             detail=f"Товар с ID {product_id} не найден в очереди модерации"
         )
     
-    return {"success": True, "product_id": product_id, "decision": "DECLINED"}
+    return {"success": True, "product_id": str(product_id), "decision": "DECLINED"}
 
 
 @router.get("/product-blocking-reasons", response_model=List[BlockingReason])
@@ -87,8 +78,6 @@ def get_blocking_reasons(
     is_active: bool = True,
     db: Session = Depends(get_db)
 ):
-    """
-    Получить список причин блокировки.
-    """
+    """Получить список причин блокировки"""
     service = ModerationService(db)
     return service.get_blocking_reasons(is_active)

@@ -1,8 +1,8 @@
-"""init moderation models
+"""init_moderation_with_uuid
 
-Revision ID: 1e53c741d6a7
+Revision ID: 76f13a41f514
 Revises: 
-Create Date: 2026-04-07 13:21:07.525640
+Create Date: 2026-04-08 09:29:40.593159
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '1e53c741d6a7'
+revision: str = '76f13a41f514'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -32,8 +32,8 @@ def upgrade() -> None:
     sa.UniqueConstraint('code')
     )
     op.create_table('moderation_tasks',
-    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('product_id', sa.Integer(), nullable=False),
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('product_id', sa.String(length=36), nullable=False),
     sa.Column('seller_id', sa.String(length=36), nullable=False),
     sa.Column('priority', sa.Integer(), nullable=True),
     sa.Column('status', sa.String(length=20), nullable=True),
@@ -45,10 +45,11 @@ def upgrade() -> None:
     )
     op.create_index('idx_tasks_created', 'moderation_tasks', ['created_at'], unique=False)
     op.create_index('idx_tasks_priority', 'moderation_tasks', ['priority'], unique=False)
+    op.create_index('idx_tasks_product_id', 'moderation_tasks', ['product_id'], unique=False)
     op.create_index('idx_tasks_status', 'moderation_tasks', ['status'], unique=False)
     op.create_table('moderation_comments',
-    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('task_id', sa.Integer(), nullable=False),
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('task_id', sa.String(length=36), nullable=False),
     sa.Column('user_id', sa.String(length=36), nullable=False),
     sa.Column('message', sa.Text(), nullable=False),
     sa.Column('is_from_moderator', sa.Boolean(), nullable=False),
@@ -58,8 +59,8 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('moderation_decisions',
-    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('task_id', sa.Integer(), nullable=False),
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('task_id', sa.String(length=36), nullable=False),
     sa.Column('moderator_id', sa.String(length=36), nullable=False),
     sa.Column('decision', sa.String(length=20), nullable=False),
     sa.Column('blocking_reason_id', sa.Integer(), nullable=True),
@@ -71,8 +72,8 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('product_snapshots',
-    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('task_id', sa.Integer(), nullable=False),
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.Column('task_id', sa.String(length=36), nullable=False),
     sa.Column('product_data', sa.JSON(), nullable=False),
     sa.Column('version', sa.Integer(), nullable=True),
     sa.Column('is_initial', sa.Boolean(), nullable=True),
@@ -90,6 +91,7 @@ def downgrade() -> None:
     op.drop_table('moderation_decisions')
     op.drop_table('moderation_comments')
     op.drop_index('idx_tasks_status', table_name='moderation_tasks')
+    op.drop_index('idx_tasks_product_id', table_name='moderation_tasks')
     op.drop_index('idx_tasks_priority', table_name='moderation_tasks')
     op.drop_index('idx_tasks_created', table_name='moderation_tasks')
     op.drop_table('moderation_tasks')
