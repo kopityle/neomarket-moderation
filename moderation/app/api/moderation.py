@@ -1,5 +1,5 @@
 # app/api/moderation.py
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Header, Response
+from fastapi import APIRouter, Depends, status, Query, Header, Response
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
@@ -22,6 +22,7 @@ from app.schemas.reason import BlockingReasonResponse
 from app.schemas.stats import StatsOverview, ModeratorStats
 from app.schemas.b2b import IncomingB2BEvent
 from app.api.dependencies import get_current_moderator_id, require_admin
+from app.core.exceptions import AppException
 
 router = APIRouter()
 
@@ -29,9 +30,10 @@ router = APIRouter()
 def check_ticket_not_hard_blocked(ticket, status_code: int = 403) -> None:
     """Проверить, что тикет не в HARD_BLOCKED"""
     if ticket.status == TaskStatus.HARD_BLOCKED.value:
-        raise HTTPException(
+        raise AppException(
             status_code=status_code,
-            detail="Cannot modify HARD_BLOCKED ticket"
+            code="HARD_BLOCKED",
+            message="Cannot modify HARD_BLOCKED ticket"
         )
 
 
@@ -74,9 +76,10 @@ def claim_ticket(
     
     active_ticket = service.get_moderator_active_ticket(moderator_id)
     if active_ticket:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="You already have an active review ticket",
+            code="ALREADY_ACTIVE",
+            message="You already have an active review ticket",
         )
     
     ticket = service.claim_next_ticket(
@@ -135,9 +138,10 @@ def get_ticket(
     ticket = service.get_ticket_detail(ticket_id)
     
     if not ticket:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Ticket with ID {ticket_id} not found",
+            code="NOT_FOUND",
+            message=f"Ticket with ID {ticket_id} not found",
         )
     
     return ticket
@@ -154,9 +158,10 @@ def release_ticket(
     
     ticket = service.get_ticket_by_id(ticket_id)
     if not ticket:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ticket not found"
+            code="NOT_FOUND",
+            message="Ticket not found"
         )
     
     # Защита от HARD_BLOCKED
@@ -165,9 +170,10 @@ def release_ticket(
     result = service.release_ticket(ticket_id, moderator_id)
     
     if not result:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Ticket is not in IN_REVIEW or belongs to another moderator",
+            code="NOT_IN_REVIEW",
+            message="Ticket is not in IN_REVIEW or belongs to another moderator",
         )
     
     return result
@@ -186,51 +192,58 @@ def approve_ticket(
     # 1. Проверка существования тикета
     ticket = service.get_ticket_by_id(ticket_id)
     if not ticket:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ticket not found"
+            code="NOT_FOUND",
+            message="Ticket not found"
         )
     
     # 2. Проверка на HARD_BLOCKED — возвращаем 409, а не 403!
     if ticket.status == TaskStatus.HARD_BLOCKED.value:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,  # ← 409, не 403!
-            detail="Cannot approve HARD_BLOCKED ticket"
+        raise AppException(
+            status_code=status.HTTP_409_CONFLICT,
+            code="HARD_BLOCKED",
+            message="Cannot approve HARD_BLOCKED ticket"
         )
     
     # 3. Проверка статуса
     if ticket.status != TaskStatus.IN_REVIEW.value:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Ticket is in {ticket.status} status, cannot approve"
+            code="WRONG_STATUS",
+            message=f"Ticket is in {ticket.status} status, cannot approve"
         )
     
     # 4. Проверка прав
     if ticket.assigned_moderator_id != str(moderator_id):
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Ticket is not assigned to you"
+            code="NOT_ASSIGNED",
+            message="Ticket is not assigned to you"
         )
     
     # 5. Проверка наличия SKU
     has_skus = service.check_product_has_skus(UUID(ticket.product_id))
     if not has_skus:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Product has no SKUs, cannot approve"
+            code="NO_SKUS",
+            message="Product has no SKUs, cannot approve"
         )
     
     # 6. Проверка, что товар не изменён во время ревью
     if not service.check_product_not_changed_during_review(ticket):
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Product was edited during review. Please refresh and try again."
+            code="PRODUCT_CHANGED",
+            message="Product was edited during review. Please refresh and try again."
         )
     
     comment = request.comment if request else None
     result = service.approve_ticket(ticket_id, moderator_id, comment)
     
     return result
+
 
 @router.post("/tickets/{ticket_id}/block", response_model=TicketResponse)
 def block_ticket(
@@ -248,47 +261,53 @@ def block_ticket(
     # 1. Проверка существования тикета
     ticket = service.get_ticket_by_id(ticket_id)
     if not ticket:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ticket not found"
+            code="NOT_FOUND",
+            message="Ticket not found"
         )
     
     # 2. Нельзя блокировать уже HARD_BLOCKED
     if ticket.status == TaskStatus.HARD_BLOCKED.value:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Ticket is already HARD_BLOCKED"
+            code="HARD_BLOCKED",
+            message="Ticket is already HARD_BLOCKED"
         )
     
     # 3. Проверка статуса
     if ticket.status != TaskStatus.IN_REVIEW.value:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Ticket is in {ticket.status} status, cannot block"
+            code="WRONG_STATUS",
+            message=f"Ticket is in {ticket.status} status, cannot block"
         )
     
     # 4. Проверка прав
     if ticket.assigned_moderator_id != str(moderator_id):
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Ticket is not assigned to you"
+            code="NOT_ASSIGNED",
+            message="Ticket is not assigned to you"
         )
     
     # 5. Валидация причин блокировки
     reasons = service.validate_blocking_reasons(request.blocking_reason_ids)
     if not reasons:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid blocking_reason_ids"
+            code="INVALID_REASONS",
+            message="Invalid blocking_reason_ids"
         )
     
     # 6. Валидация field_reports
     if request.field_reports:
         invalid_fields = service.validate_field_reports(request.field_reports)
         if invalid_fields:
-            raise HTTPException(
+            raise AppException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid field paths: {invalid_fields}"
+                code="INVALID_FIELD_PATHS",
+                message=f"Invalid field paths: {invalid_fields}"
             )
     
     # 7. Блокируем тикет
@@ -326,9 +345,10 @@ def get_blocking_reason_by_id(
     reason = service.get_blocking_reason_by_id(reason_id)
     
     if not reason:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Blocking reason with ID {reason_id} not found",
+            code="NOT_FOUND",
+            message=f"Blocking reason with ID {reason_id} not found",
         )
     
     return reason
@@ -346,9 +366,10 @@ def create_blocking_reason(
     
     existing = db.query(BlockingReasonModel).filter(BlockingReasonModel.code == request.code).first()
     if existing:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Blocking reason with code {request.code} already exists",
+            code="DUPLICATE_CODE",
+            message=f"Blocking reason with code {request.code} already exists",
         )
     
     reason = service.create_blocking_reason(request)
@@ -369,9 +390,10 @@ def update_blocking_reason(
     reason = service.update_blocking_reason(reason_id, request)
     
     if not reason:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Blocking reason with ID {reason_id} not found",
+            code="NOT_FOUND",
+            message=f"Blocking reason with ID {reason_id} not found",
         )
     
     return reason
@@ -389,12 +411,14 @@ def deactivate_blocking_reason(
     success = service.deactivate_blocking_reason(reason_id)
     
     if not success:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Blocking reason with ID {reason_id} not found",
+            code="NOT_FOUND",
+            message=f"Blocking reason with ID {reason_id} not found",
         )
     
     return None
+
 
 # ==================== STATS ====================
 
@@ -428,20 +452,20 @@ def receive_b2b_event(
 ):
     """Приём событий о товарах от B2B-сервиса."""
     if x_service_key != settings.B2B_SERVICE_KEY:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid X-Service-Key",
+            code="UNAUTHORIZED",
+            message="Invalid X-Service-Key",
         )
     
     service = ModerationService(db)
     success = service.process_b2b_event(event)
     
     if not success:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Duplicate event (idempotency_key already used)",
+            code="DUPLICATE_EVENT",
+            message="Duplicate event (idempotency_key already used)",
         )
     
     return Response(status_code=status.HTTP_202_ACCEPTED)
-
-

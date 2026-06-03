@@ -1,11 +1,12 @@
 # app/api/auth.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.auth_service import AuthService
 from app.schemas.auth import LoginRequest, TokenResponse, RefreshRequest
 from app.config import settings
+from app.core.exceptions import AppException
 
 router = APIRouter(tags=["Auth"])
 
@@ -20,9 +21,10 @@ def login(
     
     moderator = service.authenticate(request.email, request.password)
     if not moderator:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+            code="UNAUTHORIZED",
+            message="Invalid email or password",
         )
     
     # Генерируем токены
@@ -49,9 +51,10 @@ def refresh(
     
     moderator_id = service.validate_refresh_token(request.refresh_token)
     if not moderator_id:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired refresh token",
+            code="UNAUTHORIZED",
+            message="Invalid or expired refresh token",
         )
     
     # Отзываем старый refresh token и создаём новую пару

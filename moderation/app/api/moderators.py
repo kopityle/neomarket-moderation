@@ -1,5 +1,5 @@
 # app/api/moderators.py
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
@@ -12,6 +12,7 @@ from app.schemas.moderator import (
     PaginatedModerators,
 )
 from app.api.dependencies import get_current_moderator_id, require_admin
+from app.core.exceptions import AppException
 
 router = APIRouter(tags=["Moderators"])
 
@@ -53,9 +54,10 @@ def create_moderator(
     # Проверка на дубликат email
     existing = service.get_moderator_by_email(request.email)
     if existing:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Moderator with email {request.email} already exists",
+            code="DUPLICATE_EMAIL",
+            message=f"Moderator with email {request.email} already exists",
         )
     
     moderator = service.create_moderator(request)
@@ -72,9 +74,10 @@ def get_my_profile(
     moderator = service.get_moderator(current_moderator_id)
     
     if not moderator:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Moderator not found",
+            code="NOT_FOUND",
+            message="Moderator not found",
         )
     
     return moderator
@@ -92,9 +95,10 @@ def get_moderator(
     moderator = service.get_moderator(moderator_id)
     
     if not moderator:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Moderator with ID {moderator_id} not found",
+            code="NOT_FOUND",
+            message=f"Moderator with ID {moderator_id} not found",
         )
     
     return moderator
@@ -113,9 +117,10 @@ def update_moderator(
     
     moderator = service.get_moderator(moderator_id)
     if not moderator:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Moderator with ID {moderator_id} not found",
+            code="NOT_FOUND",
+            message=f"Moderator with ID {moderator_id} not found",
         )
     
     updated = service.update_moderator(moderator_id, request)
@@ -134,16 +139,18 @@ def delete_moderator(
     
     moderator = service.get_moderator(moderator_id)
     if not moderator:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Moderator with ID {moderator_id} not found",
+            code="NOT_FOUND",
+            message=f"Moderator with ID {moderator_id} not found",
         )
     
     # Нельзя деактивировать самого себя
     if moderator_id == current_moderator_id:
-        raise HTTPException(
+        raise AppException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Cannot deactivate your own account",
+            code="SELF_DEACTIVATION",
+            message="Cannot deactivate your own account",
         )
     
     service.deactivate_moderator(moderator_id)
