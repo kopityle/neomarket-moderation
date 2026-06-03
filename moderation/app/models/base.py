@@ -1,7 +1,6 @@
+# app/models/base.py
 from sqlalchemy import Column, DateTime, func
-from sqlalchemy.orm import declarative_base
-
-Base = declarative_base()
+from app.core.base import Base
 
 class BaseModel(Base):
     __abstract__ = True

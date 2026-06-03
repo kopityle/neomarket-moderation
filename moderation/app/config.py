@@ -16,13 +16,34 @@ class Settings:
     # B2B Service
     B2B_SERVICE_URL: str = os.getenv("B2B_SERVICE_URL", "http://b2b-service:8000")
     B2B_TIMEOUT: int = int(os.getenv("B2B_TIMEOUT", "30"))
+    B2B_SERVICE_KEY: str = os.getenv("B2B_SERVICE_KEY", "")  # ← ОБЯЗАТЕЛЬНО!
     
     # Auth
     BYPASS_AUTH: bool = os.getenv("BYPASS_AUTH", "True").lower() == "true"
     
+    # JWT Settings (добавить)
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_SECONDS: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_SECONDS", "3600"))  # 1 час
+    REFRESH_TOKEN_EXPIRE_SECONDS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_SECONDS", "604800"))  # 7 дней
+    
+    # Moderation settings
+    TICKET_TTL_MINUTES: int = int(os.getenv("TICKET_TTL_MINUTES", "30"))  # TTL блокировки IN_REVIEW
+    IDEMPOTENCY_TTL_HOURS: int = int(os.getenv("IDEMPOTENCY_TTL_HOURS", "24"))  # TTL idempotency_key
+    
+    # Queue settings
+    DEFAULT_QUEUE_PRIORITY: int = int(os.getenv("DEFAULT_QUEUE_PRIORITY", "3"))
+    MAX_QUEUE_PRIORITY: int = 4
+    MIN_QUEUE_PRIORITY: int = 1
+    
     @property
     def DATABASE_URL(self) -> str:
         return f"postgresql://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+    
+    @property
+    def is_auth_bypassed(self) -> bool:
+        """Проверка, отключена ли аутентификация (для разработки)"""
+        return self.BYPASS_AUTH
 
 
 settings = Settings()

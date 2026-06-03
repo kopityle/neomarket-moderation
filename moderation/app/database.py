@@ -1,7 +1,8 @@
-# /app/database.py
+# app/database.py
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy.orm import sessionmaker
 from app.config import settings
+from app.core.base import Base  # Импортируем из core
 
 # Создание engine
 engine = create_engine(
@@ -11,10 +12,6 @@ engine = create_engine(
 
 # Создание сессии
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Базовый класс для моделей
-Base = declarative_base()
-
 
 # Dependency для FastAPI
 def get_db():

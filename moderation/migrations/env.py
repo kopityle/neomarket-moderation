@@ -1,3 +1,4 @@
+# migrations/env.py
 from logging.config import fileConfig
 import sys
 from pathlib import Path
@@ -18,9 +19,11 @@ from app.config import settings
 from app.models import (
     ModerationTask,
     ProductSnapshot,
-    ModerationDecision,
+    # ModerationDecision,  # ← УДАЛИТЬ
     BlockingReason,
     ModerationComment,
+    IdempotencyKey,
+    FieldReport,
 )
 
 # this is the Alembic Config object
