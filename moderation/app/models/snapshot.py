@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, DateTime, ForeignKey, Index, JSON, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 import uuid
@@ -12,8 +13,8 @@ class SnapshotType:
 class ProductSnapshot(BaseModel):
     __tablename__ = "product_snapshots"
     
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    task_id = Column(String(36), ForeignKey("moderation_tasks.id", ondelete="CASCADE"), nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    task_id = Column(UUID(as_uuid=True), ForeignKey("moderation_tasks.id", ondelete="CASCADE"), nullable=False)
     
     snapshot_type = Column(String(20), nullable=False)  # BEFORE или AFTER
     data = Column(JSON, nullable=False)

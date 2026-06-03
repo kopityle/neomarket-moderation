@@ -21,6 +21,12 @@ class Settings:
     # Auth
     BYPASS_AUTH: bool = os.getenv("BYPASS_AUTH", "True").lower() == "true"
     
+    # JWT Settings (добавить)
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_SECONDS: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_SECONDS", "3600"))  # 1 час
+    REFRESH_TOKEN_EXPIRE_SECONDS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_SECONDS", "604800"))  # 7 дней
+    
     # Moderation settings
     TICKET_TTL_MINUTES: int = int(os.getenv("TICKET_TTL_MINUTES", "30"))  # TTL блокировки IN_REVIEW
     IDEMPOTENCY_TTL_HOURS: int = int(os.getenv("IDEMPOTENCY_TTL_HOURS", "24"))  # TTL idempotency_key

@@ -2,12 +2,12 @@ from sqlalchemy import Column, String, DateTime, Index, Integer, JSON, ForeignKe
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 import uuid
-
+from sqlalchemy.dialects.postgresql import UUID
 
 class ModerationTask(BaseModel):
     __tablename__ = "moderation_tasks"
     
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_id = Column(String(36), nullable=False, index=True)
     seller_id = Column(String(36), nullable=False)
     category_id = Column(String(36), nullable=True)

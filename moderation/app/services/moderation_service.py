@@ -13,9 +13,10 @@ from app.schemas.task import TaskStatus, TaskKind
 from app.schemas.decision import FieldReport
 from app.schemas.snapshot import SnapshotType
 from app.schemas.b2b import (
-    IncomingB2BEvent, EventProductCreated, EventProductEdited, EventProductDeleted,
-    ModerationEventRequest, ModerationEventType, FieldReport as B2BFieldReport  # ← добавить
+    IncomingB2BEvent, EventProductCreated, EventProductEdited, EventProductDeleted, B2BEventType,
+    ModerationEventRequest, ModerationEventType, FieldReport as B2BFieldReport 
 )
+from app.schemas.reason import BlockingReasonCreate, BlockingReasonUpdate
 from app.config import settings
 from app.schemas.stats import StatsOverview, ModeratorStats
 from app.services.b2b_client import B2BClient
@@ -35,14 +36,14 @@ class ModerationService:
             return False
         
         # 2. Обработка по типу события
-        if event.event_type == "PRODUCT_CREATED":
-            payload = EventProductCreated(**event.payload)
+        if event.event_type == B2BEventType.PRODUCT_CREATED:  # используйте Enum
+            payload = event.payload  # уже EventProductCreated
             self._handle_product_created(payload)
-        elif event.event_type == "PRODUCT_EDITED":
-            payload = EventProductEdited(**event.payload)
+        elif event.event_type == B2BEventType.PRODUCT_EDITED:
+            payload = event.payload  # уже EventProductEdited
             self._handle_product_edited(payload)
-        elif event.event_type == "PRODUCT_DELETED":
-            payload = EventProductDeleted(**event.payload)
+        elif event.event_type == B2BEventType.PRODUCT_DELETED:
+            payload = event.payload  # уже EventProductDeleted
             self._handle_product_deleted(payload)
         else:
             return True
@@ -495,6 +496,7 @@ class ModerationService:
     def save_field_reports(self, ticket_id: str, field_reports: Optional[List[FieldReport]]) -> None:
         """Сохранить field_reports в БД"""
         from app.models.field_report import FieldReport as FieldReportModel
+        from uuid import UUID as PyUUID
         
         if not field_reports:
             return
@@ -507,12 +509,12 @@ class ModerationService:
         # Сохраняем новые
         for report in field_reports:
             db_report = FieldReportModel(
-                id=str(uuid4()),
-                task_id=ticket_id,
+                id=uuid4(),
+                task_id=ticket_id, 
                 field_path=report.field_path,
                 message=report.message,
                 severity=report.severity,
-                sku_id=str(report.sku_id) if report.sku_id else None,
+                sku_id=report.sku_id,  # ← уже UUID или None
             )
             self.db.add(db_report)
         
@@ -665,3 +667,99 @@ class ModerationService:
     def _add_history_entry(self, ticket_id: str, action: str, moderator_id: UUID = None, comment: str = None) -> None:
         """Добавить запись в историю (заглушка)."""
         pass
+
+
+
+
+
+    # ==================== BLOCKING REASONS ADMIN ====================
+
+    def create_blocking_reason(self, request: BlockingReasonCreate) -> BlockingReason:
+        """Создать новую причину блокировки (только ADMIN)."""
+        from app.schemas.reason import BlockingReasonCreate as BlockingReasonCreateSchema
+        
+        reason = BlockingReason(
+            id=uuid4(),
+            code=request.code,
+            title=request.title,
+            description=request.description,
+            hard_block=request.hard_block,
+            is_active=True,
+        )
+        self.db.add(reason)
+        self.db.commit()
+        self.db.refresh(reason)
+        return reason
+
+
+    def update_blocking_reason(
+        self, 
+        reason_id: UUID, 
+        request: BlockingReasonUpdate
+    ) -> Optional[BlockingReason]:
+        """
+        Обновить причину блокировки (только ADMIN).
+        Note: hard_block НЕЛЬЗЯ менять после создания (по канону OpenAPI).
+        """
+        reason = self.db.query(BlockingReason).filter(BlockingReason.id == str(reason_id)).first()
+        
+        if not reason:
+            return None
+        
+        if request.title is not None:
+            reason.title = request.title
+        if request.description is not None:
+            reason.description = request.description
+        if request.is_active is not None:
+            reason.is_active = request.is_active
+        
+        # hard_block НЕ МЕНЯЕМ (по канону OpenAPI)
+        
+        self.db.commit()
+        self.db.refresh(reason)
+        return reason
+
+
+    def deactivate_blocking_reason(self, reason_id: UUID) -> bool:
+        """
+        Деактивировать причину блокировки (soft-delete) (только ADMIN).
+        Устанавливает is_active = False.
+        """
+        reason = self.db.query(BlockingReason).filter(BlockingReason.id == str(reason_id)).first()
+        
+        if not reason:
+            return False
+        
+        reason.is_active = False
+        self.db.commit()
+        return True
+
+    def get_blocking_reason_by_id(self, reason_id: UUID) -> Optional[BlockingReason]:
+        """Получить причину блокировки по ID"""
+        return self.db.query(BlockingReason).filter(
+            BlockingReason.id == str(reason_id)
+        ).first()
+
+
+    def release_expired_tickets(self) -> int:
+        """Вернуть в очередь просроченные IN_REVIEW тикеты"""
+        from sqlalchemy import update
+        
+        now = datetime.utcnow()
+        
+        result = self.db.execute(
+            update(ModerationTask)
+            .where(
+                ModerationTask.status == TaskStatus.IN_REVIEW,
+                ModerationTask.claim_expires_at < now
+            )
+            .values(
+                status=TaskStatus.PENDING,
+                assigned_moderator_id=None,
+                claimed_at=None,
+                claim_expires_at=None
+            )
+        )
+        
+        self.db.commit()
+        return result.rowcount

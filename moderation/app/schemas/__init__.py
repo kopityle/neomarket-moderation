@@ -7,8 +7,6 @@ from app.schemas.task import (
     TaskStatus,
     TaskKind,
     ClaimTicketRequest,
-    BlockDecisionRequest,
-    ApproveDecisionRequest,
     PaginatedTickets,
     TicketResponse,
     TicketDetailResponse,
@@ -20,15 +18,19 @@ from app.schemas.snapshot import (
     SnapshotType,
     TicketSnapshotsResponse,
     DiffEntry,
-    # TicketHistoryEntry,  # ← УДАЛИТЬ ОТСЮДА
+    
 )
-from app.schemas.decision import FieldReport, TicketHistoryEntry  # ← ДОБАВИТЬ СЮДА
+from app.schemas.decision import (
+    FieldReport, 
+    TicketHistoryEntry, 
+    BlockDecisionRequest, 
+    ApproveDecisionRequest)
+
 from app.schemas.reason import (
     BlockingReason,
     BlockingReasonCreate,
     BlockingReasonUpdate,
     BlockingReasonBase,
-    BlockingReasonResponse,
 )
 from app.schemas.comment import (
     ModerationComment,

@@ -1,69 +1,66 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
 from enum import Enum
 
-from app.schemas.decision import FieldReport, TicketHistoryEntry
+from app.schemas.decision import (
+    FieldReport, 
+    TicketHistoryEntry,
+    BlockDecisionRequest,
+    ApproveDecisionRequest
+)
 from app.schemas.reason import BlockingReason
 from app.schemas.snapshot import DiffEntry
+
 
 class TaskStatus(str, Enum):
     """Статусы задачи на модерацию (по канону OpenAPI)"""
     PENDING = "PENDING"
-    IN_REVIEW = "IN_REVIEW"          # вместо IN_PROGRESS
+    IN_REVIEW = "IN_REVIEW"
     APPROVED = "APPROVED"
-    BLOCKED = "BLOCKED"              # мягкая блокировка (продавец может исправить)
-    HARD_BLOCKED = "HARD_BLOCKED"    # жёсткая блокировка (терминальная)
+    BLOCKED = "BLOCKED"
+    HARD_BLOCKED = "HARD_BLOCKED"
 
 
 class TaskKind(str, Enum):
     """Тип тикета (по канону OpenAPI)"""
-    CREATE = "CREATE"    # создание нового товара
-    EDIT = "EDIT"        # редактирование существующего
+    CREATE = "CREATE"
+    EDIT = "EDIT"
 
 
 class ModerationTaskBase(BaseModel):
+    """Базовая модель тикета"""
     product_id: UUID = Field(..., description="ID товара из B2B")
     seller_id: UUID = Field(..., description="ID продавца из B2B")
-    kind: TaskKind = Field(..., description="CREATE — новый товар, EDIT — редактирование")
-    status: TaskStatus = Field(default=TaskStatus.PENDING, description="Статус задачи")
+    kind: TaskKind = Field(..., description="CREATE или EDIT")
+    status: TaskStatus = Field(default=TaskStatus.PENDING)
     queue_priority: int = Field(
         default=3, 
         ge=1, 
         le=4, 
-        description="Приоритет очереди: 1 — самый высокий, 4 — самый низкий"
+        description="Приоритет: 1 — высокий, 4 — низкий"
     )
-    category_id: Optional[UUID] = Field(
-        None, 
-        description="ID категории товара (из B2B)"
-    )
-    assigned_moderator_id: Optional[UUID] = Field(
-        None, 
-        description="ID модератора, взявшего тикет в работу (из Auth)"
-    )
+    category_id: Optional[UUID] = Field(None, description="ID категории")
+    assigned_moderator_id: Optional[UUID] = Field(None, description="ID модератора")
 
 
 class ModerationTaskCreate(BaseModel):
     """Создание нового тикета (при входящем событии от B2B)"""
-    product_id: UUID = Field(..., description="ID товара из B2B")
-    seller_id: UUID = Field(..., description="ID продавца из B2B")
-    kind: TaskKind = Field(..., description="CREATE или EDIT")
-    queue_priority: int = Field(
-        default=3, 
-        ge=1, 
-        le=4, 
-        description="Приоритет очереди"
-    )
-    category_id: Optional[UUID] = Field(None, description="ID категории")
-    json_before: Optional[dict] = Field(
-        None, 
-        description="Снапшот ДО изменений (только для EDIT)"
-    )
-    json_after: dict = Field(
-        ..., 
-        description="Снапшот товара на момент создания тикета"
-    )
+    product_id: UUID
+    seller_id: UUID
+    kind: TaskKind
+    queue_priority: int = Field(3, ge=1, le=4)
+    category_id: Optional[UUID] = None
+    json_before: Optional[dict] = Field(None, description="Только для EDIT")
+    json_after: dict = Field(..., description="Снапшот на момент создания")
+
+    @field_validator('queue_priority')
+    @classmethod
+    def validate_priority(cls, v: int) -> int:
+        if v < 1 or v > 4:
+            raise ValueError('queue_priority must be 1-4')
+        return v
 
 
 class ModerationTaskUpdate(BaseModel):
@@ -77,78 +74,91 @@ class ModerationTaskUpdate(BaseModel):
 class ModerationTask(ModerationTaskBase):
     """Полная модель тикета (ответ API)"""
     id: UUID = Field(..., description="UUID тикета")
-    
-    # Поля для работы с очередью (TTL 30 минут)
-    claimed_at: Optional[datetime] = Field(
-        None, 
-        description="Когда тикет был взят в работу"
-    )
+    claimed_at: Optional[datetime] = Field(None, description="Когда взят в работу")
     claim_expires_at: Optional[datetime] = Field(
         None, 
-        description="Когда автоматически вернётся в PENDING (claimed_at + 30 минут)"
+        description="Автоматический возврат в PENDING (claimed_at + 30 минут)"
     )
-    
-    # Поле решения
-    decision_at: Optional[datetime] = Field(
-        None, 
-        description="Когда было принято решение (APPROVED/BLOCKED/HARD_BLOCKED)"
-    )
-    decision_comment: Optional[str] = Field(  # ← ДОБАВИТЬ ЭТО ПОЛЕ!
-        None, 
-        max_length=2000,
-        description="Комментарий модератора к решению"
-    )
-    
-    # Системные поля
-    created_at: datetime = Field(..., description="Дата создания")
-    updated_at: Optional[datetime] = Field(None, description="Дата последнего обновления")
+    decision_at: Optional[datetime] = Field(None, description="Когда принято решение")
+    decision_comment: Optional[str] = Field(None, max_length=2000)
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    def is_claim_expired(self) -> bool:
+        """Проверяет, истекло ли время захвата тикета"""
+        if self.status != TaskStatus.IN_REVIEW or not self.claim_expires_at:
+            return False
+        return datetime.utcnow() > self.claim_expires_at
+
+    def can_be_claimed(self) -> bool:
+        """Может ли тикет быть взят в работу"""
+        return self.status == TaskStatus.PENDING and self.assigned_moderator_id is None
 
     class Config:
         from_attributes = True
 
 
+# ========== Request/Response Models ==========
+
 class ClaimTicketRequest(BaseModel):
-    """Запрос на взятие тикета из очереди (/api/v1/queue/claim)"""
-    queue_priority: Optional[int] = Field(None, ge=1, le=4, description="Фильтр по приоритету")
-    category_ids: Optional[list[UUID]] = Field(None, description="Фильтр по категориям")
+    """Запрос на взятие тикета из очереди"""
+    queue_priority: Optional[int] = Field(None, ge=1, le=4)
+    category_ids: Optional[List[UUID]] = Field(None, description="Фильтр по категориям")
 
 
-class BlockDecisionRequest(BaseModel):
-    """Запрос на блокировку тикета (/api/v1/tickets/{ticket_id}/block)"""
-    blocking_reason_ids: list[UUID] = Field(..., min_length=1, description="Список причин блокировки")
-    comment: Optional[str] = Field(None, max_length=2000, description="Комментарий модератора")
-    field_reports: Optional[list["FieldReport"]] = Field(None, description="Детальные замечания по полям")
 
 
-class ApproveDecisionRequest(BaseModel):
-    """Запрос на одобрение тикета (/api/v1/tickets/{ticket_id}/approve)"""
-    comment: Optional[str] = Field(None, max_length=2000, description="Комментарий модератора")
-
-class PaginatedTickets(BaseModel):
-    items: List[ModerationTask]
-    total_count: int
-    limit: int
-    offset: int
-
-# Для избежания циклических импортов
 class TicketResponse(ModerationTask):
-    """
-    Ответ API для тикета (алиас для ModerationTask).
-    По канону OpenAPI: TicketResponse
-    """
+    """Ответ API для тикета (базовый)"""
     pass
 
 
 class TicketDetailResponse(TicketResponse):
-    """
-    Детальный ответ API для тикета с снапшотами и историей.
-    По канону OpenAPI: TicketDetailResponse
-    """
-    json_before: Optional[dict] = Field(None, description="Снапшот ДО изменений (только для EDIT)")
-    json_after: dict = Field(..., description="Снапшот товара на момент создания тикета")
-    diff: Optional[List["DiffEntry"]] = Field(None, description="Вычисленный diff для UI")
-    field_reports: Optional[List["FieldReport"]] = Field(None, description="Детальные замечания по полям")
-    blocking_reasons: Optional[List["BlockingReason"]] = Field(None, description="Причины блокировки")
-    decision_comment: Optional[str] = Field(None, description="Комментарий модератора к решению")
-    history: Optional[List["TicketHistoryEntry"]] = Field(None, description="История изменений тикета")
+    """Детальный ответ API с снапшотами и историей"""
+    json_before: Optional[dict] = Field(None, description="Снапшот ДО изменений")
+    json_after: dict = Field(..., description="Снапшот товара на момент создания")
+    diff: Optional[List[DiffEntry]] = Field(None, description="Вычисленный diff для UI")
+    field_reports: Optional[List[FieldReport]] = None
+    blocking_reasons: Optional[List[BlockingReason]] = None
+    history: Optional[List[TicketHistoryEntry]] = None
 
+
+class PaginatedTickets(BaseModel):
+    """Пагинированный список тикетов"""
+    items: List[TicketResponse]
+    total_count: int
+    limit: int
+    offset: int
+
+
+# ========== Query Parameters ==========
+
+class QueueQueryParams(BaseModel):
+    """Query-параметры для GET /api/v1/queue"""
+    limit: int = Field(20, ge=1, le=100)
+    offset: int = Field(0, ge=0)
+    queue_priority: Optional[int] = Field(None, ge=1, le=4)
+    category_id: Optional[UUID] = None
+    seller_id: Optional[UUID] = None
+
+
+class TicketsQueryParams(BaseModel):
+    """Query-параметры для GET /api/v1/tickets"""
+    limit: int = Field(20, ge=1, le=100)
+    offset: int = Field(0, ge=0)
+    status: Optional[TaskStatus] = None
+    moderator_id: Optional[UUID] = None
+    product_id: Optional[UUID] = None
+    seller_id: Optional[UUID] = None
+    created_from: Optional[datetime] = None
+    created_to: Optional[datetime] = None
+
+
+
+    # ========== Model rebuilds for resolving forward references ==========
+
+TicketDetailResponse.model_rebuild()
+ModerationTask.model_rebuild()
+PaginatedTickets.model_rebuild()
+QueueQueryParams.model_rebuild()
+TicketsQueryParams.model_rebuild()

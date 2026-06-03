@@ -1,14 +1,15 @@
 # app/api/moderation.py
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Header, Response
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from uuid import UUID
 from app.config import settings
+from app.models.reason import BlockingReason as BlockingReasonModel
+from app.schemas.reason import BlockingReasonCreate, BlockingReasonUpdate, BlockingReason  
 
 from app.database import get_db
 from app.services.moderation_service import ModerationService
 from app.schemas.task import (
-    ModerationTask,
     TicketResponse,
     TicketDetailResponse,
     PaginatedTickets,
@@ -17,12 +18,10 @@ from app.schemas.task import (
     ApproveDecisionRequest,
     TaskStatus,
 )
-from app.schemas.reason import BlockingReason, BlockingReasonResponse
-from app.schemas.decision import TicketHistoryEntry, FieldReport
-from app.schemas.comment import PaginatedComments
+from app.schemas.reason import BlockingReasonResponse
 from app.schemas.stats import StatsOverview, ModeratorStats
 from app.schemas.b2b import IncomingB2BEvent
-from app.api.dependencies import get_current_moderator_id
+from app.api.dependencies import get_current_moderator_id, require_admin
 
 router = APIRouter()
 
@@ -87,10 +86,7 @@ def claim_ticket(
     )
     
     if not ticket:
-        raise HTTPException(
-            status_code=status.HTTP_204_NO_CONTENT,
-            detail="Queue is empty",
-        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     
     return ticket
 
@@ -320,6 +316,86 @@ def get_blocking_reasons(
     return service.get_blocking_reasons(hard_block=hard_block, is_active=is_active)
 
 
+@router.get("/blocking-reasons/{reason_id}", response_model=BlockingReasonResponse)
+def get_blocking_reason_by_id(
+    reason_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Получить причину блокировки по ID"""
+    service = ModerationService(db)
+    reason = service.get_blocking_reason_by_id(reason_id)
+    
+    if not reason:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Blocking reason with ID {reason_id} not found",
+        )
+    
+    return reason
+
+
+@router.post("/blocking-reasons", response_model=BlockingReasonResponse, status_code=status.HTTP_201_CREATED)
+def create_blocking_reason(
+    request: BlockingReasonCreate,
+    db: Session = Depends(get_db),
+    moderator_id: UUID = Depends(get_current_moderator_id),
+    _: bool = Depends(require_admin),
+):
+    """Создать причину блокировки (только ADMIN)"""
+    service = ModerationService(db)
+    
+    existing = db.query(BlockingReasonModel).filter(BlockingReasonModel.code == request.code).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Blocking reason with code {request.code} already exists",
+        )
+    
+    reason = service.create_blocking_reason(request)
+    return reason
+
+
+@router.patch("/blocking-reasons/{reason_id}", response_model=BlockingReasonResponse)
+def update_blocking_reason(
+    reason_id: UUID,
+    request: BlockingReasonUpdate,
+    db: Session = Depends(get_db),
+    moderator_id: UUID = Depends(get_current_moderator_id),
+    _: bool = Depends(require_admin),
+):
+    """Обновить причину блокировки (только ADMIN)"""
+    service = ModerationService(db)
+    
+    reason = service.update_blocking_reason(reason_id, request)
+    
+    if not reason:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Blocking reason with ID {reason_id} not found",
+        )
+    
+    return reason
+
+
+@router.delete("/blocking-reasons/{reason_id}", status_code=status.HTTP_204_NO_CONTENT)
+def deactivate_blocking_reason(
+    reason_id: UUID,
+    db: Session = Depends(get_db),
+    moderator_id: UUID = Depends(get_current_moderator_id),
+    _: bool = Depends(require_admin),
+):
+    """Деактивировать причину блокировки (soft-delete) (только ADMIN)"""
+    service = ModerationService(db)
+    success = service.deactivate_blocking_reason(reason_id)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Blocking reason with ID {reason_id} not found",
+        )
+    
+    return None
+
 # ==================== STATS ====================
 
 @router.get("/stats/overview", response_model=StatsOverview)
@@ -366,4 +442,6 @@ def receive_b2b_event(
             detail="Duplicate event (idempotency_key already used)",
         )
     
-    return {"message": "Event accepted"}
+    return Response(status_code=status.HTTP_202_ACCEPTED)
+
+

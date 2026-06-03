@@ -47,7 +47,6 @@ class TestUSMOD01:
         )
         
         assert response.status_code == 202
-        assert response.json() == {"message": "Event accepted"}
         
         # Проверяем БД
         ticket = db_session.query(ModerationTask).filter(

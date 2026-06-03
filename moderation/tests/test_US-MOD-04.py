@@ -81,7 +81,7 @@ class TestUSMOD04:
         seller_id = uuid4()
         
         ticket = ModerationTask(
-            product_id=str(uuid4()),
+            product_id=uuid4(),
             seller_id=str(seller_id),
             kind=TaskKind.CREATE.value,
             status=TaskStatus.IN_REVIEW.value,

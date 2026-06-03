@@ -80,14 +80,14 @@ class TestUSMOD06:
     def test_filter_by_hard_block(self, api_client, db_session):
         """Фильтрация причин по hard_block"""
         soft_reason = BlockingReason(
-            id=str(uuid4()),
+            id=uuid4(),
             code="TEST_SOFT",
             title="Мягкая причина",
             hard_block=False,
             is_active=True
         )
         hard_reason = BlockingReason(
-            id=str(uuid4()),
+            id=uuid4(),
             code="TEST_HARD",
             title="Жёсткая причина",
             hard_block=True,
