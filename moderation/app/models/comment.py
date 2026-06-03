@@ -9,9 +9,9 @@ class ModerationComment(BaseModel):
     
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     task_id = Column(String(36), ForeignKey("moderation_tasks.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(String(36), nullable=False)  # кто написал (модератор или продавец)
+    user_id = Column(String(36), nullable=False)
     message = Column(Text, nullable=False)
-    is_from_moderator = Column(Boolean, nullable=False)  # true = от модератора, false = от продавца
+    is_from_moderator = Column(Boolean, nullable=False)
     
     # Relationships
     task = relationship("ModerationTask", back_populates="comments")
