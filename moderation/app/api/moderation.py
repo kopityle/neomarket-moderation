@@ -215,7 +215,7 @@ def approve_ticket(
         )
     
     # 4. Проверка прав
-    if ticket.assigned_moderator_id != str(moderator_id):
+    if ticket.assigned_moderator_id != moderator_id:
         raise AppException(
             status_code=status.HTTP_409_CONFLICT,
             code="NOT_ASSIGNED",
@@ -223,7 +223,7 @@ def approve_ticket(
         )
     
     # 5. Проверка наличия SKU
-    has_skus = service.check_product_has_skus(UUID(ticket.product_id))
+    has_skus = service.check_product_has_skus(ticket.product_id)
     if not has_skus:
         raise AppException(
             status_code=status.HTTP_409_CONFLICT,
@@ -284,7 +284,7 @@ def block_ticket(
         )
     
     # 4. Проверка прав
-    if ticket.assigned_moderator_id != str(moderator_id):
+    if ticket.assigned_moderator_id != moderator_id:
         raise AppException(
             status_code=status.HTTP_409_CONFLICT,
             code="NOT_ASSIGNED",

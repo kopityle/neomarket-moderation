@@ -192,3 +192,19 @@ def test_reason(db_session):
     db_session.commit()
     db_session.refresh(reason)
     return reason
+
+
+@pytest.fixture
+def db_session_factory():
+    """
+    Фабрика для создания изолированных сессий БД.
+    Полезно для конкурентных тестов, где нужны отдельные сессии в потоках.
+    """
+    def _create_session():
+        """Создаёт новую сессию с отдельной транзакцией"""
+        connection = engine.connect()
+        transaction = connection.begin()
+        session = TestingSessionLocal(bind=connection)
+        return session, transaction, connection
+    
+    return _create_session

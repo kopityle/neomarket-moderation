@@ -35,7 +35,7 @@ class TestUSMOD03:
     ):
         """
         Сценарий: happy path — одобрение товара
-        Ожидание: статус → MODERATED, событие в B2B уходит
+        Ожидание: статус → MODERATED, событие MODERATED в B2B уходит
         """
         seller_id = uuid4()
         product_id = uuid4()
@@ -80,8 +80,11 @@ class TestUSMOD03:
         assert ticket.status == TaskStatus.APPROVED.value
         assert ticket.decision_comment == "Good product"
         
-        # Проверяем, что событие было отправлено
         mock_send.assert_called_once()
+        call_args = mock_send.call_args[0][0]
+        assert call_args.event_type == ModerationEventType.MODERATED
+        assert call_args.hard_block == False
+        assert call_args.blocking_reason_id is None
     
     def test_approve_others_card_returns_409(self, api_client, db_session):
         """Модератор пытается одобрить чужую карточку → 409 Conflict"""
