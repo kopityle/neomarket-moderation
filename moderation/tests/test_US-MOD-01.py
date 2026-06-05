@@ -56,7 +56,7 @@ class TestUSMOD01:
         assert ticket is not None
         assert ticket.status == TaskStatus.PENDING.value
         assert ticket.kind == TaskKind.CREATE.value
-        assert ticket.seller_id == str(seller_id)
+        assert str(ticket.seller_id) == str(seller_id)
         assert ticket.queue_priority == 3
         
         # Проверяем идемпотентность

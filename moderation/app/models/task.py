@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, Index, Integer, JSON, ForeignKey
+from sqlalchemy import Column, DateTime, Index, Integer, JSON, ForeignKey, String
 from sqlalchemy.orm import relationship
 from app.models.base import BaseModel
 import uuid
@@ -7,10 +7,11 @@ from sqlalchemy.dialects.postgresql import UUID
 class ModerationTask(BaseModel):
     __tablename__ = "moderation_tasks"
     
+    # Все UUID поля теперь используют тип UUID
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    product_id = Column(String(36), nullable=False, index=True)
-    seller_id = Column(String(36), nullable=False)
-    category_id = Column(String(36), nullable=True)
+    product_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    seller_id = Column(UUID(as_uuid=True), nullable=False)
+    category_id = Column(UUID(as_uuid=True), nullable=True)
     
     # Тип тикета: CREATE или EDIT
     kind = Column(String(20), nullable=False)  # CREATE, EDIT
@@ -22,7 +23,7 @@ class ModerationTask(BaseModel):
     queue_priority = Column(Integer, nullable=False, default=3, index=True)
     
     # Кто взял тикет в работу
-    assigned_moderator_id = Column(String(36), nullable=True, index=True)
+    assigned_moderator_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     
     # Снапшоты
     json_before = Column(JSON, nullable=True)
@@ -35,7 +36,7 @@ class ModerationTask(BaseModel):
     # Решение
     decision_at = Column(DateTime(timezone=True), nullable=True)
     decision_comment = Column(String(2000), nullable=True)
-    blocking_reason_id = Column(String(36), nullable=True)  # UUID причины блокировки
+    blocking_reason_id = Column(UUID(as_uuid=True), nullable=True)
     
     # Связи
     snapshots = relationship("ProductSnapshot", back_populates="task", cascade="all, delete-orphan")

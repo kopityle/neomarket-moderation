@@ -216,7 +216,7 @@ class ModerationService:
     def get_moderator_active_ticket(self, moderator_id: UUID) -> Optional[ModerationTask]:
         """Получить активный IN_REVIEW тикет модератора (не истёкший)"""
         return self.db.query(ModerationTask).filter(
-            ModerationTask.assigned_moderator_id == str(moderator_id),
+            ModerationTask.assigned_moderator_id == moderator_id,
             ModerationTask.status == TaskStatus.IN_REVIEW,
             ModerationTask.claim_expires_at > datetime.utcnow()
         ).first()
@@ -234,7 +234,6 @@ class ModerationService:
         category_ids: Optional[List[UUID]] = None,
     ) -> Optional[ModerationTask]:
         """Атомарно взять следующий тикет в работу."""
-        from sqlalchemy import asc
         
         active_ticket = self.get_moderator_active_ticket(moderator_id)
         if active_ticket:
@@ -256,7 +255,7 @@ class ModerationService:
             ticket = query.order_by(
                 asc(ModerationTask.queue_priority),
                 asc(ModerationTask.created_at)
-            ).first()
+            ).with_for_update(skip_locked=True).first()
             
             if ticket:
                 break
@@ -265,7 +264,7 @@ class ModerationService:
             return None
         
         ticket.status = TaskStatus.IN_REVIEW
-        ticket.assigned_moderator_id = str(moderator_id)
+        ticket.assigned_moderator_id = moderator_id
         ticket.claimed_at = datetime.utcnow()
         ticket.claim_expires_at = datetime.utcnow() + timedelta(minutes=settings.TICKET_TTL_MINUTES)
         
@@ -279,7 +278,7 @@ class ModerationService:
         return self.db.query(ModerationTask).filter(
             ModerationTask.id == str(ticket_id),
             ModerationTask.status == TaskStatus.IN_REVIEW,
-            ModerationTask.assigned_moderator_id == str(moderator_id)
+            ModerationTask.assigned_moderator_id == moderator_id
         ).first()
     
     def check_product_has_skus(self, product_id: UUID) -> bool:
@@ -305,7 +304,7 @@ class ModerationService:
         ticket = self.db.query(ModerationTask).filter(
             ModerationTask.id == str(ticket_id),
             ModerationTask.status == TaskStatus.IN_REVIEW,
-            ModerationTask.assigned_moderator_id == str(moderator_id)
+            ModerationTask.assigned_moderator_id == moderator_id
         ).first()
         
         if not ticket:
@@ -340,7 +339,7 @@ class ModerationService:
         if status:
             query = query.filter(ModerationTask.status == status)
         if moderator_id:
-            query = query.filter(ModerationTask.assigned_moderator_id == str(moderator_id))
+            query = query.filter(ModerationTask.assigned_moderator_id == moderator_id)
         if product_id:
             query = query.filter(ModerationTask.product_id == str(product_id))
         if seller_id:
@@ -392,7 +391,7 @@ class ModerationService:
         ticket = self.db.query(ModerationTask).filter(
             ModerationTask.id == str(ticket_id),
             ModerationTask.status == TaskStatus.IN_REVIEW,
-            ModerationTask.assigned_moderator_id == str(moderator_id)
+            ModerationTask.assigned_moderator_id == moderator_id
         ).first()
         
         if not ticket:
@@ -413,36 +412,58 @@ class ModerationService:
     def _send_moderation_event(
         self, 
         ticket: ModerationTask, 
-        event_type: str,
+        event_type: str,  # "MODERATED", "BLOCKED", "HARD_BLOCKED"
         blocking_reason_ids: List[UUID] = None,
-        field_reports: Optional[List[B2BFieldReport]] = None  # ← используем B2BFieldReport
+        field_reports: Optional[List[B2BFieldReport]] = None
     ) -> None:
         """Отправить событие в B2B асинхронно"""
-        hard_block = (event_type == "HARD_BLOCKED")
         
-        event = ModerationEventRequest(
-            idempotency_key=uuid4(),
-            product_id=UUID(ticket.product_id),
-            event_type=ModerationEventType.BLOCKED,
-            moderator_id=UUID(ticket.assigned_moderator_id) if ticket.assigned_moderator_id else None,
-            moderator_comment=ticket.decision_comment,
-            blocking_reason_id=blocking_reason_ids[0] if blocking_reason_ids else None,
-            hard_block=hard_block,
-            field_reports=field_reports,  # ← напрямую
-            occurred_at=datetime.utcnow(),
-        )
+        if event_type == "MODERATED":
+            event = ModerationEventRequest(
+                idempotency_key=uuid4(),
+                product_id=ticket.product_id,
+                event_type=ModerationEventType.MODERATED,
+                moderator_id=ticket.assigned_moderator_id if ticket.assigned_moderator_id else None,
+                moderator_comment=ticket.decision_comment,
+                blocking_reason_id=None,
+                hard_block=False,
+                field_reports=None,
+                occurred_at=datetime.utcnow(),
+            )
+        else:
+            hard_block = (event_type == "HARD_BLOCKED")
+            event = ModerationEventRequest(
+                idempotency_key=uuid4(),
+                product_id=ticket.product_id,
+                event_type=ModerationEventType.BLOCKED,
+                moderator_id=ticket.assigned_moderator_id if ticket.assigned_moderator_id else None,
+                moderator_comment=ticket.decision_comment,
+                blocking_reason_id=blocking_reason_ids[0] if blocking_reason_ids else None,
+                hard_block=hard_block,
+                field_reports=field_reports,
+                occurred_at=datetime.utcnow(),
+            )
         
-        # ... отправка
-        
+        # Отправка с логированием ошибок
         import asyncio
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(self.b2b_client.send_moderation_event(event))
-            else:
-                asyncio.run(self.b2b_client.send_moderation_event(event))
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._safe_send(event))
+            except RuntimeError:
+                asyncio.run(self._safe_send(event))
         except RuntimeError:
-            asyncio.run(self.b2b_client.send_moderation_event(event))
+            asyncio.run(self._safe_send(event))
+
+
+    async def _safe_send(self, event: ModerationEventRequest) -> None:
+        """Безопасная отправка с логированием"""
+        try:
+            result = await self.b2b_client.send_moderation_event(event)
+            if not result:
+                print(f"Failed to send moderation event for product {event.product_id}")
+        except Exception as e:
+            print(f"Error sending moderation event: {e}")
     
 
     def validate_blocking_reasons(self, reason_ids: List[UUID]) -> List[BlockingReason]:
@@ -532,7 +553,7 @@ class ModerationService:
         ticket = self.db.query(ModerationTask).filter(
             ModerationTask.id == str(ticket_id),
             ModerationTask.status == TaskStatus.IN_REVIEW,
-            ModerationTask.assigned_moderator_id == str(moderator_id)
+            ModerationTask.assigned_moderator_id == moderator_id
         ).first()
         
         if not ticket:
