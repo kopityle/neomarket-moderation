@@ -1,0 +1,48 @@
+name: Moderation CI
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # ВОТ ЭТОТ БЛОК СОЗДАЕТ БАЗУ
+    services:
+      postgres_test: # Гитхаб создаст хост с таким именем
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: neomarket_moderation_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        # Ждем, пока база станет доступна
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pytest httpx fastapi sqlalchemy pydantic-settings psycopg2-binary
+          # Устанавливаем зависимости из папки moderation
+          if [ -f moderation/requirements.txt ]; then pip install -r moderation/requirements.txt; fi
+
+      - name: Run real tests
+        env:
+          # Совпадаем с тем, что ищет твой код
+          DATABASE_URL: postgresql://postgres:postgres@postgres_test:5432/neomarket_moderation_test
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/moderation
+          # Запускаем твои настоящие тесты
+          pytest moderation/tests/
