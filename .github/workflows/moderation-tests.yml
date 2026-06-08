@@ -1,0 +1,28 @@
+name: Moderation CI
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest httpx fastapi sqlalchemy pydantic-settings
+          if [ -f moderation/requirements.txt ]; then pip install -r moderation/requirements.txt; fi
+
+      - name: Run tests
+        run: |
+          # Добавляем папку moderation в пути, чтобы тесты видели код
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/moderation
+          # Запускаем все тесты
+          pytest
